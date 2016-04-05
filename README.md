@@ -391,68 +391,73 @@ version 'v1', using: :param, parameter: 'v'
 
     curl http://localhost:9292/statuses/public_timeline?v=v1
 
-## Mounting multiple versions
+## Mounting Multiple Versions
 
-Example directory structure.
+Building a new API version incrementally on top of a previous one. There’re no hacks involved. Consider the following trivial API.
+
+```ruby
+class V1::API < Grape::API
+  format :json
+  version 'v1' # required
+
+  resource :test do
+    desc "Returns the current API version, v1."
+    get do
+      {version: 'v1'}
+    end
+
+    desc "Returns pong."
+    get 'ping' do
+      {ping: 'pong'}
+    end
+  end
+end
+```
+
+Define the next API version.
+
+```ruby
+class V2::API < Grape::API
+  format :json
+  version 'v2' # required
+
+  resource :test do
+    get do
+      {version: 'v2'}
+    end
+  end
+end
+```
 
 
-    |- api/
-    |-- api.rb
-    |-- v1/
-    |--- api.rb
-    |-- v2/
-    |--- api.rb
+At this point we want v1 to be identical to v2, except for the root method. We’ll start by allowing v1 to respond to both v1 and v2 requests.
 
+```ruby
+version ['v2', 'v1']
+```
 
-`api/api.rb`
+Mount v2 before v1. The default versioning behavior is to cascade the request to the next Rack middleware.
 
 ```ruby
 class API < Grape::API
-  prefix          'api'
-  version         ['v2', 'v1']
-  format          :json
-  default_format  :json
-
   mount V2::API
   mount V1::API
 end
 ```
 
-`api/v1/api.rb`
-
-```ruby
-class V1::API < Grape::API
-  version 'v1' # required block although `version ['v2', 'v1']` included in api.rb
-
-
-  resource :test do
-    get do
-      'v1 API'
-    end
-  end
-end
-```
-
-`api/v2/api`
-
-```ruby
-class V2::API < Grape::API
-  version 'v2' # required block although `version ['v2', 'v1']` included in api.rb
-
-  resource :test do
-    get do
-      'v2 API'
-    end
-  end
-end
-```
+Request and Response
+--------------------
 
     curl http://localhost:3000/api/v1/test
-    # => "v1 API"
-    curl http://localhost:3000/api/v2/test
-    # => "v2 API"
+    {version: 'v1'}
 
-> NOTE: In above example, if you do not include `version 'v1'` in `api/v1/api.rb` and `version 'v2'` in `api/v2/api.rb`, then `curl http://localhost:3000/api/v1/test` and `curl http://localhost:3000/api/v2/test` both will return same response from `v2` api, regardless of whatever version you supply in API endpoint.
+    curl http://localhost:3000/api/v1/test/ping
+    {ping: 'pong'}
+
+    curl http://localhost:3000/api/v2/test
+    {version: 'v2'}
+
+> The only fix needed in Grape for this was to enable multiple versions specified with version, committed in [2be499c51](https://github.com/ruby-grape/grape/commit/2be499c51542e536e9e0bf7fd4e7587dd069e289)
 
 ## Describing Methods
 
